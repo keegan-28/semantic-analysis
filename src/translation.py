@@ -1,4 +1,5 @@
 from fasttext.FastText import _FastText
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
 from typing import List
 import typing
 
@@ -12,9 +13,16 @@ def language_id(
     confs: List[float] = [conf[0] for conf in predictions[1]]
     return labels, confs
 
+def translation_models(model_path:str):
+    tokenizer = AutoTokenizer.from_pretrained(pretrained_model_name_or_path=model_path)
+    model = AutoModelForSeq2SeqLM.from_pretrained(pretrained_model_name_or_path=model_path)
+    return tokenizer, model
 
 def translate(
-    input_text: List[str], labels: List[str], confs: List[float]
+    tokenizer, model, input_text: List[str], labels: List[str], confs: List[float]
 ) -> List[str]:
     """ """
+    tgt_lang_id = tokenizer.lang_code_to_id["eng_Latn"]
+    model_inputs = tokenizer()
+    
     raise NotImplementedError()

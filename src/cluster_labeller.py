@@ -47,11 +47,19 @@ class Embeddings:
 
 @dataclass(frozen=True)
 class ParamHDBSCAN:
-    min_samples: List[int] 
+    min_samples: List[int]
     min_cluster_size: List[int]
     cluster_selection_epsilon: List[float]
     cluster_selection_method: List[str]
     metric: List[str]
+
+
+@dataclass(frozen=True)
+class TuningResults:
+    params: Dict[str, Any]
+    num_clusters: int
+    coverage: float
+    DBCV_score: np.float64
 
 
 class Clusterer:
@@ -66,7 +74,7 @@ class Clusterer:
         self.seed = seed
 
     def generate_emb(self, emb_dir: Optional[str], low_dim: int = 10) -> Embeddings:
-        embeddings = self.emb_model.encode(self.docs, convert_to_numpy=True)
+        embeddings = self.emb_model.encode(self.docs, convert_to_numpy=True, show_progress_bar=True)
 
         umap_low_dim = umap.UMAP(n_components=low_dim, random_state=self.seed)
         umap_2d = umap.UMAP(n_components=2, random_state=self.seed)
@@ -118,17 +126,23 @@ class Clusterer:
 
         return self.result
 
-    def cluster(self, return_params: bool = True, *args, **kwargs) -> Tuple[np.ndarray, np.float64, Dict[str, Any]]:
-        clusterer = hdbscan.HDBSCAN(gen_min_span_tree=True, *args, **kwargs)
+    def cluster(self, *args, **kwargs) -> Tuple[np.ndarray, np.float64, Dict[str, Any]]:
+        clusterer = hdbscan.HDBSCAN(gen_min_span_tree=True,*args, **kwargs)
         clusterer.fit(self.result.emb_low)
         self.labels: np.ndarray = clusterer.labels_
         score = clusterer.relative_validity_
         return self.labels, score, clusterer.get_params()
 
-    def tune_HDBSCAN(self, params: ParamHDBSCAN) -> Tuple[np.float64, Dict[str, List[Any]]]:
-        best_score = 0
-        scores = []
-        coverage = []
+    def tune_HDBSCAN(
+        self, params: ParamHDBSCAN
+    ) -> List[TuningResults]:
+        
+        tuning_results: Dict[str, List[Any]] = {
+            "params": [],
+            "num_clusters": [],
+            "coverage": [],
+            "DBCV_score": []
+        }
 
         for min_cluster_size in params.min_cluster_size:
             for min_samples in params.min_samples:
@@ -136,26 +150,20 @@ class Clusterer:
                     for cluster_selection_method in params.cluster_selection_method:
                         for metric in params.metric:
                             # for each combination of parameters of hdbscan
-                            hdb = hdbscan.HDBSCAN(
-                                min_cluster_size=min_cluster_size,
-                                min_samples=min_samples,
-                                cluster_selection_method=cluster_selection_method,
-                                metric=metric,
-                                gen_min_span_tree=True,
-                                cluster_selection_epsilon=cluster_selection_epsilon,
-                            ).fit(self.result.emb_low)
-                            # DBCV score
-                            score: np.float64 = hdb.relative_validity_
-                            scores.append(score)
-                            coverage.append((hdb.labels_>=0).sum()/self.result.emb_low.shape[0])
-                            # if we got a better DBCV, store it and the parameters
-                            if score > best_score:
-                                best_score = score
-                                best_parameters = {
-                                    "min_cluster_size": min_cluster_size,
-                                    "min_samples": min_samples,
-                                    "cluster_selection_method": cluster_selection_method,
-                                    "metric": metric,
-                                }
+                            test_param = {
+                                "min_cluster_size": min_cluster_size,
+                                "min_samples": min_samples,
+                                "cluster_selection_method": cluster_selection_method,
+                                "metric": metric,
+                                "gen_min_span_tree": True,
+                                "cluster_selection_epsilon": cluster_selection_epsilon,
+                            }
 
-        return best_score, best_parameters, scores, coverage
+                            hdb = hdbscan.HDBSCAN(**test_param).fit(self.result.emb_low)
+                            
+                            tuning_results["params"].append(test_param)
+                            tuning_results["coverage"].append((hdb.labels_ >= 0).sum() / len(self.docs))
+                            tuning_results["num_clusters"].append(len((np.unique(hdb.labels_))))
+                            tuning_results["DBCV_score"].append(hdb.relative_validity_)
+
+        return tuning_results

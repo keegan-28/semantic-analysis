@@ -1,7 +1,7 @@
 from typing import List, Optional, Dict, Any, Tuple
 from sentence_transformers import SentenceTransformer
 import numpy as np
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import umap.umap_ as umap
 import pickle
 import hdbscan
@@ -54,14 +54,6 @@ class ParamHDBSCAN:
     metric: List[str]
 
 
-@dataclass(frozen=True)
-class TuningResults:
-    params: Dict[str, Any]
-    num_clusters: int
-    coverage: float
-    DBCV_score: np.float64
-
-
 class Clusterer:
     def __init__(
         self, embedding_model_path: str, docs: List[str], device: str, seed: int = 42
@@ -74,7 +66,9 @@ class Clusterer:
         self.seed = seed
 
     def generate_emb(self, emb_dir: Optional[str], low_dim: int = 10) -> Embeddings:
-        embeddings = self.emb_model.encode(self.docs, convert_to_numpy=True, show_progress_bar=True)
+        embeddings = self.emb_model.encode(
+            self.docs, convert_to_numpy=True, show_progress_bar=True
+        )
 
         umap_low_dim = umap.UMAP(n_components=low_dim, random_state=self.seed)
         umap_2d = umap.UMAP(n_components=2, random_state=self.seed)
@@ -127,21 +121,19 @@ class Clusterer:
         return self.result
 
     def cluster(self, *args, **kwargs) -> Tuple[np.ndarray, np.float64, Dict[str, Any]]:
-        clusterer = hdbscan.HDBSCAN(gen_min_span_tree=True,*args, **kwargs)
+        clusterer = hdbscan.HDBSCAN(gen_min_span_tree=True, *args, **kwargs)
         clusterer.fit(self.result.emb_low)
         self.labels: np.ndarray = clusterer.labels_
         score = clusterer.relative_validity_
         return self.labels, score, clusterer.get_params()
 
-    def tune_HDBSCAN(
-        self, params: ParamHDBSCAN
-    ) -> List[TuningResults]:
-        
+    def tune_HDBSCAN(self, params: ParamHDBSCAN) -> List[dict]:
+
         tuning_results: Dict[str, List[Any]] = {
             "params": [],
             "num_clusters": [],
             "coverage": [],
-            "DBCV_score": []
+            "DBCV_score": [],
         }
 
         for min_cluster_size in params.min_cluster_size:
@@ -160,10 +152,14 @@ class Clusterer:
                             }
 
                             hdb = hdbscan.HDBSCAN(**test_param).fit(self.result.emb_low)
-                            
+
                             tuning_results["params"].append(test_param)
-                            tuning_results["coverage"].append((hdb.labels_ >= 0).sum() / len(self.docs))
-                            tuning_results["num_clusters"].append(len((np.unique(hdb.labels_))))
+                            tuning_results["coverage"].append(
+                                (hdb.labels_ >= 0).sum() / len(self.docs)
+                            )
+                            tuning_results["num_clusters"].append(
+                                len((np.unique(hdb.labels_)))
+                            )
                             tuning_results["DBCV_score"].append(hdb.relative_validity_)
 
         return tuning_results

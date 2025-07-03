@@ -1,0 +1,10 @@
+sentence-transformers
+hdbscan
+umap-learn
+fasttext
+scikit-learn
+numpy
+pandas
+matplotlib
+plotly
+nbformat>=4.2.0

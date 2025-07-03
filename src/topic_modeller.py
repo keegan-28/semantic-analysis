@@ -1,8 +1,9 @@
-from typing import List, Any, Tuple, Union
+from typing import List, Tuple, Union, Dict
 from sklearn.feature_extraction.text import CountVectorizer
 from sentence_transformers import SentenceTransformer
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from scipy.sparse import spmatrix
 
 
 def vectorize_docs(
@@ -29,26 +30,33 @@ def vectorize_docs(
 
     token_count = counter.fit(docs)
     words = token_count.get_feature_names_out()
-    count_matrix = token_count.fit_transform(docs)
+    count_matrix: spmatrix = token_count.fit_transform(docs)
 
     return words.tolist(), count_matrix
 
 
-def embed_words(words: List[str], emb_model: SentenceTransformer):
+def embed_words(words: List[str], emb_model: SentenceTransformer) -> np.ndarray:
 
-    word_embeddings = emb_model.encode(words)
+    word_embeddings: np.ndarray = emb_model.encode(words)
 
     return word_embeddings
 
 
-def embed_docs(docs: List[str], emb_model: SentenceTransformer):
+def embed_docs(docs: List[str], emb_model: SentenceTransformer) -> np.ndarray:
 
-    doc_embeddings = emb_model.encode(docs)
+    doc_embeddings: np.ndarray = emb_model.encode(docs)
 
     return doc_embeddings
 
 
-def extract_keywords(docs, words, count_matrix, doc_emb, word_emb, num_topics: int = 5):
+def extract_keywords(
+    docs: List[str],
+    words: List[str],
+    count_matrix: spmatrix,
+    doc_emb: np.ndarray,
+    word_emb: np.ndarray,
+    num_topics: int = 5,
+) -> Dict[str, List[str]]:
     all_keywords = []
 
     for index, _ in enumerate(docs):
